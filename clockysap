@@ -1,0 +1,152 @@
+#!/usr/bin/env python3
+import locale
+import time
+from selenium import webdriver
+from selenium.webdriver import ActionChains
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as expect
+from selenium.webdriver.support.wait import WebDriverWait
+from selenium.webdriver.common.keys import Keys
+from csv import DictReader
+import sys
+from datetime import datetime
+import requests
+import calendar
+import pytz
+import argparse
+
+
+local_tz = pytz.timezone('Europe/Berlin')
+
+
+def convert_tz(utc_dt):
+    local = utc_dt.replace(tzinfo=pytz.utc).astimezone(local_tz)
+    return local_tz.normalize(local)
+
+
+def get_clockify_report(apikey):
+    response = requests.get("https://api.clockify.me/api/v1/workspaces", headers={"X-Api-Key": apikey})
+    workspaces = response.json()
+    workspaceId = workspaces[0]['id']
+    month = datetime.now().month
+    year = datetime.now().year
+    lastday = calendar.monthrange(year, month)[1]
+    response = requests.post(f"https://reports.api.clockify.me/v1/workspaces/{workspaceId}/reports/detailed",
+                             json={
+                                 "dateRangeStart": f"{year:04d}-{month:02d}-01T00:00:00.000Z",
+                                 "dateRangeEnd": f"{year:04d}-{month:02d}-{lastday:02d}T23:59:59.999Z",
+                                 "amountShown": "HIDE_AMOUNT",
+                                 "sortOrder": "ASCENDING",
+                                 "detailedFilter": {
+                                     "page": 1,
+                                     "pageSize": 100,
+                                     "sortColumn": "DATE"
+                                 }
+                             },
+                             headers={"X-Api-Key": "XwMX83zgjwwIf2RJ"}, )
+    return response.json()
+
+
+def enter_time(drv, timePicker, time):
+    hours = time.strftime("%H")
+    minutes = time.minute
+    minutes = round(minutes / 60.0 * 4.0, 0) / 4 * 60
+    openButton = WebDriverWait(drv, 3000).until(
+        expect.element_to_be_clickable((By.ID, f"{timePicker}-icon")))
+    openButton.click()
+    popOver = WebDriverWait(drv, 3000).until(
+        expect.presence_of_element_located((By.ID, f"{timePicker}-RP-popover")))
+    okButton = popOver.find_element_by_tag_name("bdi")
+    hoursSlider = popOver.find_element_by_id(f"{timePicker}-sliders-listHours")
+    hoursSlider.send_keys(hours)
+    minutesSlider = popOver.find_element_by_id(f"{timePicker}-sliders-listMins")
+    minutesSlider.send_keys(f"{minutes:02g}")
+    okButton.click()
+
+
+parser = argparse.ArgumentParser(description="Import Clockify entries of the current month to SAP Successfactors")
+parser.add_argument('--ticketmapping', required=True, dest="ticketmapping", help="A CSV file mapping clockify projects/activities to tickets")
+parser.add_argument("--role", default="02", dest="role", help="The role to use (e.g. 02 = Consultant")
+parser.add_argument("--clockify-apikey", required=True, dest="apikey", help="API key for Clockify")
+
+params = None
+
+try:
+    parser.parse_args(sys.argv)
+except:
+    parser.print_help()
+    exit(1)
+
+ticketmapping = params["ticketmapping"]
+role = params["role"]
+clockify_apikey = params["apikey"]
+driver = webdriver.Chrome()
+
+
+ticketnumbermap = {}
+clockify = get_clockify_report(clockify_apikey)
+
+driver.get("https://portal.allgeier-es.com/ess/shells/abap/FioriLaunchpad.html#TIMEREPORTING-create")
+WebDriverWait(driver, 600000).until(expect.presence_of_element_located(
+    (By.ID, "application-TIMEREPORTING-create-component---worklist--btnAdd-img")))
+
+localeSetting = ({"de": "de_DE", "en": "en_US"})[driver.find_element(By.TAG_NAME, "html").get_attribute("lang")]
+locale.setlocale(locale.LC_NUMERIC, locale=localeSetting)
+
+with open(ticketmapping) as ticketnumbers:
+    tndata = DictReader(ticketnumbers, delimiter=';')
+    for timeentry in tndata:
+        try:
+            desc = timeentry["Beschreibung"]
+        except KeyError:
+            print("Error: Ticket mapping file must have a column called 'Beschreibung'")
+            exit(1)
+        try:
+            ticket = timeentry["Ticket"]
+        except KeyError:
+            print("Error: Ticket mapping file must have a column called 'Ticket'")
+            exit(1)
+        ticketnumbermap[desc] = ticket
+
+for timeentry in clockify["timeentries"]:
+    indate = datetime.strptime(timeentry["timeInterval"]["start"], "%Y-%m-%dT%H:%M:%SZ")
+    indate = convert_tz(indate)
+    outdate = datetime.strptime(timeentry["timeInterval"]["end"], "%Y-%m-%dT%H:%M:%S.%fZ")
+    outdate = convert_tz(outdate)
+    date = indate.strftime("%Y%m%d")
+    project = timeentry["projectName"]
+    task = timeentry["taskName"]
+    description = timeentry["description"]
+    if not timeentry["billable"]:
+        activity = "NB"
+    else:
+        activity = "BL"
+    ticketnumber = ticketnumbermap[f"{project} {task}"]
+    time.sleep(1)
+    addButton = WebDriverWait(driver, 600000).until(expect.element_to_be_clickable(
+        (By.ID, "application-TIMEREPORTING-create-component---worklist--btnAdd-img")))
+    addButton.click()
+    time.sleep(1)
+    dateSelector = WebDriverWait(driver, 3000).until(
+        expect.element_to_be_clickable((By.CSS_SELECTOR, f"#calAdd--Month0-{date} > .sapUiCalItemText")))
+    dateSelector.click()
+    ticketNumberInput = driver.find_element(By.ID, "inpTicketNoAdd-inner")
+    ticketNumberInput.send_keys(Keys.BACKSPACE)
+    ticketNumberInput.send_keys(ticketnumber)
+    ticketNumberInput.send_keys(Keys.ENTER)
+    time.sleep(1)
+    driver.find_element(By.ID, "selRoleAdd").send_keys(role)
+    driver.find_element(By.ID, "selRoleAdd").send_keys(Keys.ENTER)
+    driver.find_element(By.ID, "selActivityAdd").send_keys(activity)
+    driver.find_element(By.ID, "selActivityAdd").send_keys(Keys.ENTER)
+    enter_time(driver, "tpTimeFromAdd", indate)
+    enter_time(driver, "tpTimeTillAdd", outdate)
+    # timeDiff = round(((endtime - starttime).seconds / 3600.0) * 4.0, 0) / 4.0 # round to nearest quarter hour
+    # driver.find_element(By.ID, "selTimeAdd").send_keys(locale.format_string("%g", timeDiff))
+    driver.find_element(By.ID, "tDescriptionAddLong").click()
+    driver.find_element(By.ID, "tDescriptionAddLong-inner").send_keys(description)
+    driver.find_element(By.ID, "ckbReleasedAdd-label-bdi").click()
+    WebDriverWait(driver, 600000).until(expect.invisibility_of_element_located((By.ID, "btnAddSave-BDI-content")))
+
+time.sleep(5)
+driver.quit()

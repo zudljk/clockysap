@@ -43,7 +43,7 @@ def get_clockify_report(apikey):
                                      "sortColumn": "DATE"
                                  }
                              },
-                             headers={"X-Api-Key": "XwMX83zgjwwIf2RJ"}, )
+                             headers={"X-Api-Key": apikey}, )
     return response.json()
 
 

@@ -10,7 +10,7 @@
 
 
  * Install python 3.x on your system
-   * MacOS 10.14+: Python 3 should already be installed
+   * MacOS 10.14+: ```brew install pip3``` (requires homebrew package manager)
    * Debian/Ubuntu Linux: ```sudo apt-get install python3-pip```
    * SuSE/CentOS/RedHat Linux: ```sudo yum install python34-setuptools
 && sudo easy_install-3.4 pip```

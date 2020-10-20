@@ -8,5 +8,6 @@ setup(
     license='MIT',
     author='zudljk',
     author_email='zudljk@email.de',
-    description='Import Clockify entries from the current month to SAP Successfactors'
+    description='Import Clockify entries from the current month to SAP Successfactors',
+    scripts=["clockysap"]
 )

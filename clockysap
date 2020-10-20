@@ -65,21 +65,21 @@ def enter_time(drv, timePicker, time):
 
 
 parser = argparse.ArgumentParser(description="Import Clockify entries of the current month to SAP Successfactors")
-parser.add_argument('--ticketmapping', required=True, dest="ticketmapping", help="A CSV file mapping clockify projects/activities to tickets")
-parser.add_argument("--role", default="02", dest="role", help="The role to use (e.g. 02 = Consultant")
-parser.add_argument("--clockify-apikey", required=True, dest="apikey", help="API key for Clockify")
+parser.add_argument('--ticketmapping', required=True, help="A CSV file mapping clockify projects/activities to tickets")
+parser.add_argument("--role", default="02", help="The role to use (e.g. 02 = Consultant")
+parser.add_argument("--clockify-apikey", required=True, help="API key for Clockify")
 
 params = None
 
 try:
-    parser.parse_args(sys.argv)
+    params = parser.parse_args()
 except:
     parser.print_help()
     exit(1)
 
-ticketmapping = params["ticketmapping"]
-role = params["role"]
-clockify_apikey = params["apikey"]
+ticketmapping = params.ticketmapping
+role = params.role
+clockify_apikey = params.clockify_apikey
 driver = webdriver.Chrome()
 
 

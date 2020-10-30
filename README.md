@@ -4,9 +4,9 @@
 
  * Create a CSV file to map ticket IDs to Clockify projects + activities. The file must have 2 columns:
 
-| Ticket | Beschreibung |
-|--------|--------------|
-|ID of the ticket| Key consisting of "&lt;Clockify project> &lt;Clockify activity>"|
+| Ticket | Project | Task |
+|--------|---------|------|
+|ID of the ticket| Clockify project | Clockify activity |
 
 
  * Install python 3.x on your system

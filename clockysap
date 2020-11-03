@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import locale
+import re
 import time
 from selenium import webdriver
 from selenium.common.exceptions import ElementNotInteractableException
@@ -77,8 +78,32 @@ def enter_time(drv, timePicker, time):
     okButton.click()
 
 
+def get_tickets(ticketmapping):
+    map = {}
+    with open(ticketmapping) as ticketnumbers:
+        tndata = DictReader(ticketnumbers, delimiter=';')
+        for entry in tndata:
+            try:
+                mappedProject = entry["Project"]
+            except KeyError:
+                print("Error: Ticket mapping file must have a column called 'Beschreibung'")
+                exit(1)
+            try:
+                mappedTask = entry["Task"]
+            except KeyError:
+                print("Error: Ticket mapping file must have a column called 'Beschreibung'")
+                exit(1)
+            try:
+                ticket = entry["Ticket"]
+            except KeyError:
+                print("Error: Ticket mapping file must have a column called 'Ticket'")
+                exit(1)
+            map[f'{mappedProject} {mappedTask}'] = ticket
+    return map
+
+
 parser = argparse.ArgumentParser(description="Import Clockify entries of the current month to SAP Successfactors")
-parser.add_argument('--ticketmapping', required=True, help="A CSV file mapping clockify projects/activities to tickets")
+parser.add_argument('--ticketmapping', help="A CSV file mapping clockify projects/activities to tickets")
 parser.add_argument("--role", default="02", help="The role to use (e.g. 02 = Consultant")
 parser.add_argument("--clockify-apikey", required=True, help="API key for Clockify")
 
@@ -95,7 +120,6 @@ role = params.role
 clockify_apikey = params.clockify_apikey
 driver = webdriver.Chrome()
 
-ticketnumbermap = {}
 clockify = get_clockify_report(clockify_apikey)
 
 driver.get("https://portal.allgeier-es.com/ess/shells/abap/FioriLaunchpad.html#TIMEREPORTING-create")
@@ -105,25 +129,7 @@ WebDriverWait(driver, 600000).until(expect.presence_of_element_located(
 localeSetting = ({"de": "de_DE", "en": "en_US"})[driver.find_element(By.TAG_NAME, "html").get_attribute("lang")]
 locale.setlocale(locale.LC_NUMERIC, locale=localeSetting)
 
-with open(ticketmapping) as ticketnumbers:
-    tndata = DictReader(ticketnumbers, delimiter=';')
-    for timeentry in tndata:
-        try:
-            mappedProject = timeentry["Project"]
-        except KeyError:
-            print("Error: Ticket mapping file must have a column called 'Beschreibung'")
-            exit(1)
-        try:
-            mappedTask = timeentry["Task"]
-        except KeyError:
-            print("Error: Ticket mapping file must have a column called 'Beschreibung'")
-            exit(1)
-        try:
-            ticket = timeentry["Ticket"]
-        except KeyError:
-            print("Error: Ticket mapping file must have a column called 'Ticket'")
-            exit(1)
-        ticketnumbermap[f'{mappedProject} {mappedTask}'] = ticket
+ticketnumbermap = get_tickets(ticketmapping) if ticketmapping else None
 
 for timeentry in clockify["timeentries"]:
     indate = datetime.strptime(timeentry["timeInterval"]["start"], "%Y-%m-%dT%H:%M:%SZ")
@@ -138,7 +144,11 @@ for timeentry in clockify["timeentries"]:
         activity = "NB"
     else:
         activity = "BL"
-    ticketnumber = ticketnumbermap[f"{project} {task}"]
+    task_parts = re.match(r'([0-9]+): (.*)', task)
+    if task_parts:
+        ticketnumber, task = task_parts.groups()
+    else:
+        ticketnumber = ticketnumbermap[f"{project} {task}"]
     time.sleep(1)
     addButton = WebDriverWait(driver, 600000).until(expect.element_to_be_clickable(
         (By.ID, "application-TIMEREPORTING-create-component---worklist--btnAdd-img")))

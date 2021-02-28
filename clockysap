@@ -29,13 +29,12 @@ def get_clockify_report(apikey):
     response = requests.get("https://api.clockify.me/api/v1/workspaces", headers={"X-Api-Key": apikey})
     workspaces = response.json()
     workspaceId = workspaces[0]['id']
-    month = datetime.now().month
-    year = datetime.now().year
-    lastday = calendar.monthrange(year, month)[1]
+    now = datetime.now()
+    startofweek = now - timedelta(days=now.weekday())
     response = requests.post(f"https://reports.api.clockify.me/v1/workspaces/{workspaceId}/reports/detailed",
                              json={
-                                 "dateRangeStart": f"{year:04d}-{month:02d}-01T00:00:00.000Z",
-                                 "dateRangeEnd": f"{year:04d}-{month:02d}-{lastday:02d}T23:59:59.999Z",
+                                 "dateRangeStart": f"{startofweek.year:04d}-{startofweek.month:02d}-{startofweek.day:02d}T00:00:00.000Z",
+                                 "dateRangeEnd": f"{now.year:04d}-{now.month:02d}-{now.day:02d}T23:59:59.999Z",
                                  "amountShown": "HIDE_AMOUNT",
                                  "sortOrder": "ASCENDING",
                                  "detailedFilter": {

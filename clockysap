@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
+import argparse
+import calendar
 import locale
 import re
 import time
+from csv import DictReader
+from datetime import datetime, timedelta
+
+import pytz
+import requests
+from chromedriver_py import binary_path  # this will get you the path variable
 from selenium import webdriver
 from selenium.common.exceptions import ElementNotInteractableException
-from selenium.webdriver import ActionChains
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as expect
 from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver.common.keys import Keys
-from csv import DictReader
-import sys
-from datetime import datetime, timedelta
-import requests
-import calendar
-import pytz
-import argparse
 
 local_tz = pytz.timezone('Europe/Berlin')
 
@@ -118,7 +118,7 @@ except:
 ticketmapping = params.ticketmapping
 role = params.role
 clockify_apikey = params.clockify_apikey
-driver = webdriver.Chrome()
+driver = webdriver.Chrome(executable_path=binary_path)
 
 clockify = get_clockify_report(clockify_apikey)
 
@@ -133,9 +133,9 @@ ticketnumbermap = get_tickets(ticketmapping) if ticketmapping else None
 
 for timeentry in clockify["timeentries"]:
     indate = datetime.strptime(timeentry["timeInterval"]["start"], "%Y-%m-%dT%H:%M:%SZ")
-    indate = convert_tz(indate)
-    outdate = datetime.strptime(timeentry["timeInterval"]["end"], "%Y-%m-%dT%H:%M:%S.%fZ")
-    outdate = convert_tz(outdate)
+    # indate = convert_tz(indate)
+    outdate = datetime.strptime(timeentry["timeInterval"]["end"], "%Y-%m-%dT%H:%M:%SZ")
+    # outdate = convert_tz(outdate)
     date = indate.strftime("%Y%m%d")
     project = timeentry["projectName"]
     task = timeentry["taskName"]

@@ -1,4 +1,4 @@
-requests~=2.24.0
-pytz~=2020.1
+requests==2.25.1
+pytz==2021.1
 selenium~=3.141.0
-chromedriver-py==88.0.4324.96
+chromedriver-py==90.0.4430.24

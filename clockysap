@@ -131,9 +131,9 @@ locale.setlocale(locale.LC_NUMERIC, locale=localeSetting)
 ticketnumbermap = get_tickets(ticketmapping) if ticketmapping else None
 
 for timeentry in clockify["timeentries"]:
-    indate = datetime.strptime(timeentry["timeInterval"]["start"], "%Y-%m-%dT%H:%M:%SZ")
+    indate = datetime.fromisoformat(timeentry["timeInterval"]["start"])
     # indate = convert_tz(indate)
-    outdate = datetime.strptime(timeentry["timeInterval"]["end"], "%Y-%m-%dT%H:%M:%SZ")
+    outdate = datetime.fromisoformat(timeentry["timeInterval"]["end"])
     # outdate = convert_tz(outdate)
     date = indate.strftime("%Y%m%d")
     project = timeentry["projectName"]

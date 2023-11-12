@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import argparse
-import calendar
 import locale
 import re
 import time
@@ -117,13 +116,25 @@ except:
 ticketmapping = params.ticketmapping
 role = params.role
 clockify_apikey = params.clockify_apikey
-driver = webdriver.Chrome(executable_path=binary_path)
+driver = webdriver.Firefox()
 
 clockify = get_clockify_report(clockify_apikey)
 
-driver.get("https://portal.allgeier-es.com/ess/shells/abap/FioriLaunchpad.html#TIMEREPORTING-create")
+ADD_ENTRY_BUTTON_ID = "application-TIMEREPORTING_NAG-create-component---timeReportList--btnAdd"
+TICKET_DROPDOWN_ID = "application-TIMEREPORTING_NAG-create-component---timeReportList--inpTicketNoAdd-inner"
+ROLE_DROPDOWN_ID = "application-TIMEREPORTING_NAG-create-component---timeReportList--selRoleAdd"
+ACTIVITY_DROPDOWN_ID = "application-TIMEREPORTING_NAG-create-component---timeReportList--selActivityAdd"
+TOTAL_TIME_DROPDOWN_ID = "application-TIMEREPORTING_NAG-create-component---timeReportList--selTimeAdd"
+FROM_TIME_DROPDOWN_ID = "application-TIMEREPORTING_NAG-create-component---timeReportList--tpTimeFromAdd"
+TILL_TIME_DROPDOWN_ID = "application-TIMEREPORTING_NAG-create-component---timeReportList--tpTimeTillAdd"
+LONG_DESCRIPTION_ID = "application-TIMEREPORTING_NAG-create-component---timeReportList--tDescriptionAddLong"
+LONG_DESCRIPTION_TEXTAREA_ID = "application-TIMEREPORTING_NAG-create-component---timeReportList--tDescriptionAddLong-inner"
+RELEASE_CHECKBOX_ID = "application-TIMEREPORTING_NAG-create-component---timeReportList--ckbReleasedAdd-label-bdi"
+SAVE_BUTTON_ID = "application-TIMEREPORTING_NAG-create-component---timeReportList--btnAddSave-BDI-content"
+
+driver.get("https://portal.nagarro-es.com/ess/shells/abap/FioriLaunchpad.html#TIMEREPORTING-create")
 WebDriverWait(driver, 600000).until(expect.presence_of_element_located(
-    (By.ID, "application-TIMEREPORTING-create-component---worklist--btnAdd-img")))
+    (By.ID, ADD_ENTRY_BUTTON_ID)))
 
 localeSetting = ({"de": "de_DE", "en": "en_US"})[driver.find_element(By.TAG_NAME, "html").get_attribute("lang")]
 locale.setlocale(locale.LC_NUMERIC, locale=localeSetting)
@@ -142,37 +153,37 @@ for timeentry in clockify["timeentries"]:
     if not timeentry["billable"]:
         activity = "NB"
     else:
-        activity = "BL"
+        activity = "PW"
     task_parts = re.match(r'([0-9]+): (.*)', task)
     if task_parts:
         ticketnumber, task = task_parts.groups()
     else:
         ticketnumber = ticketnumbermap[f"{project} {task}"]
     time.sleep(1)
-    addButton = WebDriverWait(driver, 600000).until(expect.element_to_be_clickable(
-        (By.ID, "application-TIMEREPORTING-create-component---worklist--btnAdd-img")))
+    addButton = WebDriverWait(driver, 600000).until(expect.element_to_be_clickable((By.ID, ADD_ENTRY_BUTTON_ID)))
     addButton.click()
     time.sleep(1)
     try:
         dateSelector = WebDriverWait(driver, 3000).until(
-            expect.element_to_be_clickable((By.CSS_SELECTOR, f"#calAdd--Month0-{date} > .sapUiCalItemText")))
+            expect.element_to_be_clickable((By.XPATH,
+                                            f"//div[@data-sap-day=\"{date}\"]/span[@class=\"sapUiCalItemText\"]")))
         dateSelector.click()
-        ticketNumberInput = driver.find_element(By.ID, "inpTicketNoAdd-inner")
+        ticketNumberInput = driver.find_element(By.ID, TICKET_DROPDOWN_ID)
         ticketNumberInput.send_keys(Keys.BACKSPACE)
         ticketNumberInput.send_keys(ticketnumber)
         ticketNumberInput.send_keys(Keys.ENTER)
         time.sleep(1)
-        driver.find_element(By.ID, "selRoleAdd").send_keys(role)
-        driver.find_element(By.ID, "selRoleAdd").send_keys(Keys.ENTER)
-        driver.find_element(By.ID, "selActivityAdd").send_keys(activity)
-        driver.find_element(By.ID, "selActivityAdd").send_keys(Keys.ENTER)
-        enter_time(driver, "tpTimeFromAdd", indate)
-        enter_time(driver, "tpTimeTillAdd", outdate)
-        # timeDiff = round(((endtime - starttime).seconds / 3600.0) * 4.0, 0) / 4.0 # round to nearest quarter hour
-        # driver.find_element(By.ID, "selTimeAdd").send_keys(locale.format_string("%g", timeDiff))
-        driver.find_element(By.ID, "tDescriptionAddLong").click()
-        driver.find_element(By.ID, "tDescriptionAddLong-inner").send_keys(description)
-        driver.find_element(By.ID, "ckbReleasedAdd-label-bdi").click()
+        driver.find_element(By.ID, ROLE_DROPDOWN_ID).send_keys(role)
+        driver.find_element(By.ID, ROLE_DROPDOWN_ID).send_keys(Keys.ENTER)
+        driver.find_element(By.ID, ACTIVITY_DROPDOWN_ID).send_keys(activity)
+        driver.find_element(By.ID, ACTIVITY_DROPDOWN_ID).send_keys(Keys.ENTER)
+        timeDiff = round(((indate - outdate).seconds / 3600.0) * 4.0, 0) / 4.0 # round to nearest quarter hour
+        driver.find_element(By.ID, TOTAL_TIME_DROPDOWN_ID).send_keys(locale.format_string("%g", timeDiff))
+        enter_time(driver, FROM_TIME_DROPDOWN_ID, indate)
+        enter_time(driver, TILL_TIME_DROPDOWN_ID, outdate)
+        driver.find_element(By.ID, LONG_DESCRIPTION_ID).click()
+        driver.find_element(By.ID, LONG_DESCRIPTION_TEXTAREA_ID).send_keys(description)
+        driver.find_element(By.ID, RELEASE_CHECKBOX_ID).click()
     except ElementNotInteractableException as e:
         print(f"WARNING: Exception was thrown: {e.msg}")
         print()
@@ -184,7 +195,7 @@ for timeentry in clockify["timeentries"]:
         print(f"Start:        {indate}")
         print(f"End:          {outdate}")
         print(f"Description:  {description}")
-    WebDriverWait(driver, 600000).until(expect.invisibility_of_element_located((By.ID, "btnAddSave-BDI-content")))
+    WebDriverWait(driver, 600000).until(expect.invisibility_of_element_located((By.ID, SAVE_BUTTON_ID)))
 
 time.sleep(5)
 driver.quit()

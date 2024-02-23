@@ -1,2 +1,5 @@
 venv
 .idea
+clockysap.egg-info
+build
+*.log

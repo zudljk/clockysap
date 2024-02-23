@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 
 import pytz
 import requests
-from chromedriver_py import binary_path  # this will get you the path variable
 from selenium import webdriver
 from selenium.common.exceptions import ElementNotInteractableException
 from selenium.webdriver.common.by import By
@@ -17,6 +16,7 @@ from selenium.webdriver.support import expected_conditions as expect
 from selenium.webdriver.support.wait import WebDriverWait
 
 local_tz = pytz.timezone('Europe/Berlin')
+iso_date_pattern = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
 
 def convert_tz(utc_dt):
@@ -24,16 +24,20 @@ def convert_tz(utc_dt):
     return local_tz.normalize(local)
 
 
-def get_clockify_report(apikey):
+def get_clockify_report(apikey, start, end):
     response = requests.get("https://api.clockify.me/api/v1/workspaces", headers={"X-Api-Key": apikey})
     workspaces = response.json()
-    workspaceId = workspaces[0]['id']
+    workspace_id = workspaces[0]['id']
     now = datetime.now()
-    startofweek = now - timedelta(days=now.weekday())
-    response = requests.post(f"https://reports.api.clockify.me/v1/workspaces/{workspaceId}/reports/detailed",
+    if not start:
+        start_of_week = now - timedelta(days=now.weekday())
+        start = f"{start_of_week.year:04d}-{start_of_week.month:02d}-{start_of_week.day:02d}"
+    if not end:
+        end = f"{now.year:04d}-{now.month:02d}-{now.day:02d}"
+    response = requests.post(f"https://reports.api.clockify.me/v1/workspaces/{workspace_id}/reports/detailed",
                              json={
-                                 "dateRangeStart": f"{startofweek.year:04d}-{startofweek.month:02d}-{startofweek.day:02d}T00:00:00.000Z",
-                                 "dateRangeEnd": f"{now.year:04d}-{now.month:02d}-{now.day:02d}T23:59:59.999Z",
+                                 "dateRangeStart": f"{start}T00:00:00.000Z",
+                                 "dateRangeEnd": f"{end}T23:59:59.999Z",
                                  "amountShown": "HIDE_AMOUNT",
                                  "sortOrder": "ASCENDING",
                                  "detailedFilter": {
@@ -59,35 +63,35 @@ def round_time(dt=None, round_to=60):
     return dt + timedelta(0, rounding - seconds, -dt.microsecond)
 
 
-def enter_time(drv, timePicker, time):
-    time = round_time(time, 15 * 60)
-    hours = time.strftime("%H")
-    minutes = time.minute / 10  # only the first digit is needed
-    openButton = WebDriverWait(drv, 3000).until(
-        expect.element_to_be_clickable((By.ID, f"{timePicker}-icon")))
-    openButton.click()
-    popOver = WebDriverWait(drv, 3000).until(
-        expect.presence_of_element_located((By.ID, f"{timePicker}-RP-popover")))
-    okButton = popOver.find_element_by_tag_name("bdi")
-    hoursSlider = popOver.find_element_by_id(f"{timePicker}-sliders-listHours")
-    hoursSlider.send_keys(hours)
-    minutesSlider = popOver.find_element_by_id(f"{timePicker}-sliders-listMins")
-    minutesSlider.send_keys(f"{minutes:1g}")
-    okButton.click()
+def enter_time(drv, time_picker, start_time):
+    start_time = round_time(start_time, 15 * 60)
+    hours = start_time.strftime("%H")
+    minutes = start_time.minute / 10  # only the first digit is needed
+    open_button = WebDriverWait(drv, 3000).until(
+        expect.element_to_be_clickable((By.ID, f"{time_picker}-icon")))
+    open_button.click()
+    pop_over = WebDriverWait(drv, 3000).until(
+        expect.presence_of_element_located((By.ID, f"{time_picker}-RP-popover")))
+    ok_button = pop_over.find_element(By.TAG_NAME, "bdi")
+    hours_slider = pop_over.find_element(By.ID, f"{time_picker}-sliders-listHours")
+    hours_slider.send_keys(hours)
+    minutes_slider = pop_over.find_element(By.ID, f"{time_picker}-sliders-listMins")
+    minutes_slider.send_keys(f"{minutes:1g}")
+    ok_button.click()
 
 
-def get_tickets(ticketmapping):
+def get_tickets(ticket_mapping):
     map = {}
-    with open(ticketmapping) as ticketnumbers:
-        tndata = DictReader(ticketnumbers, delimiter=';')
+    with open(ticket_mapping) as ticket_numbers:
+        tndata = DictReader(ticket_numbers, delimiter=';')
         for entry in tndata:
             try:
-                mappedProject = entry["Project"]
+                mapped_project = entry["Project"]
             except KeyError:
                 print("Error: Ticket mapping file must have a column called 'Beschreibung'")
                 exit(1)
             try:
-                mappedTask = entry["Task"]
+                mapped_task = entry["Task"]
             except KeyError:
                 print("Error: Ticket mapping file must have a column called 'Beschreibung'")
                 exit(1)
@@ -96,7 +100,7 @@ def get_tickets(ticketmapping):
             except KeyError:
                 print("Error: Ticket mapping file must have a column called 'Ticket'")
                 exit(1)
-            map[f'{mappedProject} {mappedTask}'] = ticket
+            map[f'{mapped_project} {mapped_task}'] = ticket
     return map
 
 
@@ -104,6 +108,8 @@ parser = argparse.ArgumentParser(description="Import Clockify entries of the cur
 parser.add_argument('--ticketmapping', help="A CSV file mapping clockify projects/activities to tickets")
 parser.add_argument("--role", default="02", help="The role to use (e.g. 02 = Consultant")
 parser.add_argument("--clockify-apikey", required=True, help="API key for Clockify")
+parser.add_argument("--start", required=False, help="Start date in ISO format (YYYY-MM-DD). Default: Start of week")
+parser.add_argument("--end", required=False, help="End date in ISO format (YYYY-MM-DD). Default: Today")
 
 params = None
 
@@ -113,12 +119,22 @@ except:
     parser.print_help()
     exit(1)
 
-ticketmapping = params.ticketmapping
+if params.start and not iso_date_pattern.match(params.start):
+    print(f"Invalid date: {params.start}")
+    parser.print_help()
+    exit(1)
+
+if params.end and not iso_date_pattern.match(params.end):
+    print(f"Invalid date: {params.end}")
+    parser.print_help()
+    exit(1)
+
+ticket_mapping = params.ticketmapping
 role = params.role
 clockify_apikey = params.clockify_apikey
 driver = webdriver.Firefox()
 
-clockify = get_clockify_report(clockify_apikey)
+clockify = get_clockify_report(clockify_apikey, params.start, params.end)
 
 ADD_ENTRY_BUTTON_ID = "application-TIMEREPORTING_NAG-create-component---timeReportList--btnAdd"
 TICKET_DROPDOWN_ID = "application-TIMEREPORTING_NAG-create-component---timeReportList--inpTicketNoAdd-inner"
@@ -136,29 +152,29 @@ driver.get("https://portal.nagarro-es.com/ess/shells/abap/FioriLaunchpad.html#TI
 WebDriverWait(driver, 600000).until(expect.presence_of_element_located(
     (By.ID, ADD_ENTRY_BUTTON_ID)))
 
-localeSetting = ({"de": "de_DE", "en": "en_US"})[driver.find_element(By.TAG_NAME, "html").get_attribute("lang")]
-locale.setlocale(locale.LC_NUMERIC, locale=localeSetting)
+locale_setting = ({"de": "de_DE", "en": "en_US"})[driver.find_element(By.TAG_NAME, "html").get_attribute("lang")]
+locale.setlocale(locale.LC_NUMERIC, locale=locale_setting)
 
-ticketnumbermap = get_tickets(ticketmapping) if ticketmapping else None
+ticket_number_map = get_tickets(ticket_mapping) if ticket_mapping else None
 
-for timeentry in clockify["timeentries"]:
-    indate = datetime.fromisoformat(timeentry["timeInterval"]["start"])
+for time_entry in clockify["timeentries"]:
+    indate = datetime.fromisoformat(time_entry["timeInterval"]["start"])
     # indate = convert_tz(indate)
-    outdate = datetime.fromisoformat(timeentry["timeInterval"]["end"])
+    outdate = datetime.fromisoformat(time_entry["timeInterval"]["end"])
     # outdate = convert_tz(outdate)
     date = indate.strftime("%Y%m%d")
-    project = timeentry["projectName"]
-    task = timeentry["taskName"]
-    description = timeentry["description"]
-    if not timeentry["billable"]:
+    project = time_entry["projectName"]
+    task = time_entry["taskName"]
+    description = time_entry["description"]
+    if not time_entry["billable"]:
         activity = "NB"
     else:
         activity = "PW"
     task_parts = re.match(r'([0-9]+): (.*)', task)
     if task_parts:
-        ticketnumber, task = task_parts.groups()
+        ticket_number, task = task_parts.groups()
     else:
-        ticketnumber = ticketnumbermap[f"{project} {task}"]
+        ticket_number = ticket_number_map[f"{project} {task}"]
     time.sleep(1)
     addButton = WebDriverWait(driver, 600000).until(expect.element_to_be_clickable((By.ID, ADD_ENTRY_BUTTON_ID)))
     addButton.click()
@@ -170,7 +186,7 @@ for timeentry in clockify["timeentries"]:
         dateSelector.click()
         ticketNumberInput = driver.find_element(By.ID, TICKET_DROPDOWN_ID)
         ticketNumberInput.send_keys(Keys.BACKSPACE)
-        ticketNumberInput.send_keys(ticketnumber)
+        ticketNumberInput.send_keys(ticket_number)
         ticketNumberInput.send_keys(Keys.ENTER)
         time.sleep(1)
         driver.find_element(By.ID, ROLE_DROPDOWN_ID).send_keys(role)
@@ -189,12 +205,12 @@ for timeentry in clockify["timeentries"]:
         print()
         print("Please enter the following data by hand:")
         print("----------------------------------------")
-        print(f"Date:         {date}")
-        print(f"Ticketnumber: {ticketnumber}")
-        print(f"Role:         {role}")
-        print(f"Start:        {indate}")
-        print(f"End:          {outdate}")
-        print(f"Description:  {description}")
+        print(f"Date:          {date}")
+        print(f"Ticket number: {ticket_number}")
+        print(f"Role:          {role}")
+        print(f"Start:         {indate}")
+        print(f"End:           {outdate}")
+        print(f"Description:   {description}")
     WebDriverWait(driver, 600000).until(expect.invisibility_of_element_located((By.ID, SAVE_BUTTON_ID)))
 
 time.sleep(5)

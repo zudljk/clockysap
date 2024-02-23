@@ -10,4 +10,7 @@
   <component name="PackageRequirementsSettings">
     <option name="removeUnused" value="true" />
   </component>
+  <component name="SonarLintModuleSettings">
+    <option name="uniqueId" value="2e3b3e7e-2471-4a05-ad3a-76f88165e39f" />
+  </component>
 </module>

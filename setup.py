@@ -2,7 +2,7 @@ from setuptools import setup
 from setuptools import find_packages
 setup(
     name='clockysap',
-    version='0.3',
+    version='0.5',
     packages=find_packages(),
     url='https://github.com/zudljk/clockysap',
     license='MIT',

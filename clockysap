@@ -14,6 +14,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as expect
 from selenium.webdriver.support.wait import WebDriverWait
+from selenium.webdriver.firefox.options import Options
 
 local_tz = pytz.timezone('Europe/Berlin')
 iso_date_pattern = re.compile(r'^\d{4}-\d{2}-\d{2}$')
@@ -73,10 +74,8 @@ def enter_time(drv, time_picker, start_time):
     pop_over = WebDriverWait(drv, 3000).until(
         expect.presence_of_element_located((By.ID, f"{time_picker}-RP-popover")))
     ok_button = pop_over.find_element(By.TAG_NAME, "bdi")
-    hours_slider = pop_over.find_element(By.ID, f"{time_picker}-sliders-listHours")
-    hours_slider.send_keys(hours)
-    minutes_slider = pop_over.find_element(By.ID, f"{time_picker}-sliders-listMins")
-    minutes_slider.send_keys(f"{minutes:1g}")
+    hours_slider = pop_over.find_element(By.ID, f"{time_picker}-inner")
+    hours_slider.send_keys(f"{hours}:{minutes:1g}")
     ok_button.click()
 
 
@@ -132,7 +131,9 @@ if params.end and not iso_date_pattern.match(params.end):
 ticket_mapping = params.ticketmapping
 role = params.role
 clockify_apikey = params.clockify_apikey
-driver = webdriver.Firefox()
+opts = Options()
+opts.add_argument("--no-sandbox")
+driver = webdriver.Firefox(options=opts)
 
 clockify = get_clockify_report(clockify_apikey, params.start, params.end)
 
@@ -199,7 +200,8 @@ for time_entry in clockify["timeentries"]:
         enter_time(driver, TILL_TIME_DROPDOWN_ID, outdate)
         driver.find_element(By.ID, LONG_DESCRIPTION_ID).click()
         driver.find_element(By.ID, LONG_DESCRIPTION_TEXTAREA_ID).send_keys(description)
-        driver.find_element(By.ID, RELEASE_CHECKBOX_ID).click()
+        WebDriverWait(driver, 3000).until(
+            expect.element_to_be_clickable((By.ID, RELEASE_CHECKBOX_ID))).click()
     except ElementNotInteractableException as e:
         print(f"WARNING: Exception was thrown: {e.msg}")
         print()

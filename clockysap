@@ -68,14 +68,12 @@ def enter_time(drv, time_picker, start_time):
     start_time = round_time(start_time, 15 * 60)
     hours = start_time.strftime("%H")
     minutes = start_time.minute / 10  # only the first digit is needed
-    open_button = WebDriverWait(drv, 3000).until(
-        expect.element_to_be_clickable((By.ID, f"{time_picker}-icon")))
-    open_button.click()
-    pop_over = WebDriverWait(drv, 3000).until(
-        expect.presence_of_element_located((By.ID, f"{time_picker}-RP-popover")))
-    ok_button = pop_over.find_element(By.TAG_NAME, "bdi")
-    hours_slider = pop_over.find_element(By.ID, f"{time_picker}-inner")
-    hours_slider.send_keys(f"{hours}:{minutes:1g}")
+    hours_text = WebDriverWait(drv, 3000).until(
+        expect.element_to_be_clickable((By.ID, f"{time_picker}-inner")))
+    hours_text.click()
+    hours_text.send_keys(f"{hours}:{minutes}")
+    ok_button = WebDriverWait(drv, 3000).until(
+        expect.element_to_be_clickable((By.TAG_NAME, "bdi")))
     ok_button.click()
 
 
